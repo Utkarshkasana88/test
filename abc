@@ -4,3 +4,28 @@ curl -X POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token \
   -d "client_secret=<client-secret>" \
   -d "scope=https://databricks.azure.net/.default" \
   -d "grant_type=client_credentials"
+
+import requests
+
+# Replace with your values
+TENANT_ID = "<your-tenant-id>"
+CLIENT_ID = "<your-client-id>"
+CLIENT_SECRET = "<your-client-secret>"
+
+# Token endpoint
+token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+
+# Token request
+data = {
+    "client_id": CLIENT_ID,
+    "client_secret": CLIENT_SECRET,
+    "grant_type": "client_credentials",
+    "scope": "https://databricks.azure.net/.default"
+}
+
+response = requests.post(token_url, data=data)
+response.raise_for_status()  # Raise error if failed
+access_token = response.json()["access_token"]
+
+print("✅ Access token acquired")
+
