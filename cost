@@ -1,0 +1,113 @@
+import requests
+from datetime import datetime, timedelta
+
+# CONFIG
+DATABRICKS_TOKEN = "<your-databricks-pat>"
+DATABRICKS_HOST = "<https://your-workspace.databricks.com>"
+
+AZURE_BEARER_TOKEN = "<your-azure-access-token>"
+SUBSCRIPTION_ID = "<sub-id>"
+RESOURCE_GROUP = "<rg-name>"
+WORKSPACE_NAME = "<workspace-name>"
+
+headers_db = {
+    "Authorization": f"Bearer {DATABRICKS_TOKEN}"
+}
+
+headers_azure = {
+    "Authorization": f"Bearer {AZURE_BEARER_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+
+
+def get_run_details(run_id):
+    url = f"{DATABRICKS_HOST}/api/2.1/jobs/runs/get?run_id={run_id}"
+    resp = requests.get(url, headers=headers_db)
+    data = resp.json()
+    
+    start = datetime.fromtimestamp(data['start_time'] / 1000)
+    end = datetime.fromtimestamp(data['end_time'] / 1000)
+    cluster_id = data['cluster_instance']['cluster_id']
+    
+    return start, end, cluster_id
+
+
+def list_runs_on_cluster(cluster_id, start_time, end_time):
+    url = f"{DATABRICKS_HOST}/api/2.1/jobs/runs/list"
+    all_runs = []
+    has_more = True
+    offset = 0
+    
+    while has_more:
+        params = {
+            "limit": 100,
+            "offset": offset
+        }
+        resp = requests.get(url, headers=headers_db, params=params).json()
+        for run in resp.get("runs", []):
+            c_id = run.get("cluster_instance", {}).get("cluster_id")
+            s = run.get("start_time")
+            e = run.get("end_time", s + 1)  # fallback
+            if c_id == cluster_id:
+                run_start = datetime.fromtimestamp(s / 1000)
+                run_end = datetime.fromtimestamp(e / 1000)
+                # Check time overlap
+                if run_start < end_time and run_end > start_time:
+                    duration = (run_end - run_start).total_seconds() / 60  # in minutes
+                    all_runs.append((run['run_id'], duration))
+        has_more = resp.get("has_more", False)
+        offset += 100
+    
+    return all_runs
+
+
+def get_cluster_cost(start_time, end_time, cluster_id):
+    url = f"https://management.azure.com/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{RESOURCE_GROUP}/providers/Microsoft.Databricks/workspaces/{WORKSPACE_NAME}/providers/Microsoft.CostManagement/query?api-version=2023-03-01"
+    
+    body = {
+        "type": "Usage",
+        "timeframe": "Custom",
+        "timePeriod": {
+            "from": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "to": end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        },
+        "dataset": {
+            "granularity": "None",
+            "filter": {
+                "dimensions": {
+                    "name": "ResourceId",
+                    "operator": "In",
+                    "values": [f"/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{RESOURCE_GROUP}/providers/Microsoft.Databricks/workspaces/{WORKSPACE_NAME}/clusters/{cluster_id}"]
+                }
+            },
+            "aggregation": {
+                "totalCost": {
+                    "name": "PreTaxCost",
+                    "function": "Sum"
+                }
+            }
+        }
+    }
+
+    resp = requests.post(url, headers=headers_azure, json=body)
+    cost = resp.json()['properties']['rows'][0][0]
+    return float(cost)
+
+
+def calculate_cost_share(run_id):
+    start, end, cluster_id = get_run_details(run_id)
+    all_runs = list_runs_on_cluster(cluster_id, start, end)
+    
+    run_durations = {r_id: dur for r_id, dur in all_runs}
+    total_duration = sum(run_durations.values())
+    
+    cluster_cost = get_cluster_cost(start, end, cluster_id)
+    
+    run_costs = {r_id: (dur / total_duration) * cluster_cost for r_id, dur in run_durations.items()}
+    return run_costs.get(run_id), run_costs
+
+
+target_run_id = 12345678
+my_run_cost, all_run_costs = calculate_cost_share(target_run_id)
+print(f"Run {target_run_id} Cost: ₹{my_run_cost:.2f}")
