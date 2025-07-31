@@ -1,0 +1,6 @@
+curl -X POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=<client-id>" \
+  -d "client_secret=<client-secret>" \
+  -d "scope=https://databricks.azure.net/.default" \
+  -d "grant_type=client_credentials"
