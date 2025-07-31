@@ -1,0 +1,77 @@
+import os
+import requests
+import datetime
+from azure.identity import ClientSecretCredential
+from azure.mgmt.costmanagement import CostManagementClient
+from azure.mgmt.costmanagement.models import (
+    QueryDefinition, QueryTimePeriod, QueryDataset,
+    QueryAggregation, QueryGrouping
+)
+
+# ---------- Config ----------
+TENANT_ID = os.getenv("TENANT_ID")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
+RESOURCE_GROUP = os.getenv("DATABRICKS_MANAGED_RG")
+DATABRICKS_HOST = os.getenv("DATABRICKS_HOST")  # e.g. https://<workspace>.azuredatabricks.net
+DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
+RUN_ID = os.getenv("DATABRICKS_RUN_ID")
+# JDBC details to fetch usage table
+JDBC_URL = os.getenv("JDBC_URL")   # e.g. "jdbc:..."
+
+# ---------- Step 1: Get run timestamps ----------
+run_resp = requests.get(
+    f"{DATABRICKS_HOST}/api/2.0/jobs/runs/get",
+    headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
+    params={"run_id": RUN_ID}
+)
+run_resp.raise_for_status()
+r = run_resp.json()
+start_ms = r['run']['start_time']
+end_ms = r['run'].get('end_time', int(datetime.datetime.utcnow().timestamp() * 1000))
+start = datetime.datetime.fromtimestamp(start_ms / 1000, datetime.timezone.utc)
+end = datetime.datetime.fromtimestamp(end_ms / 1000, datetime.timezone.utc)
+
+# ---------- Step 2: Query Azure cost ----------
+credential = ClientSecretCredential(TENANT_ID, CLIENT_ID, CLIENT_SECRET)
+cm = CostManagementClient(credential)
+
+time_period = QueryTimePeriod(from_property=start, to=end)
+agg = {"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")}
+group = [QueryGrouping(type="Dimension", name="ResourceId")]
+
+dataset = QueryDataset(granularity="Hourly", aggregation=agg, grouping=group)
+definition = QueryDefinition(type="ActualCost", timeframe="Custom", time_period=time_period, dataset=dataset)
+scope = f"/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{RESOURCE_GROUP}"
+
+cost_result = cm.query.usage(scope=scope, parameters=definition)
+cost_rows = cost_result.as_dict().get("rows", [])
+
+azure_cost = sum(row[1] for row in cost_rows)
+
+print(f"Azure cost between {start} – {end}: ${azure_cost:.2f}")
+
+# ---------- Step 3: Query Databricks usage table ----------
+import pyodbc    # or appropriate connector
+conn = pyodbc.connect(JDBC_URL)
+cursor = conn.cursor()
+cursor.execute("""
+  SELECT run_id, dbu_consumed, charge_amount
+  FROM system.billing.usage
+  WHERE run_id = ?
+    AND usage_start_time >= ?
+    AND usage_end_time <= ?
+""", RUN_ID, start, end)
+
+rows = cursor.fetchall()
+dbu_total = sum(r.dbu_consumed for r in rows)
+dbu_charge = sum(r.charge_amount for r in rows)
+print(f"Databricks reported DBUs: {dbu_total}, DBU charge: ${dbu_charge:.2f}")
+
+# ---------- Step 4: Summary ----------
+print("\n=== Cost Attribution Summary ===")
+print(f"Run ID: {RUN_ID}")
+print(f"Time window: {start} to {end}")
+print(f"Azure Cost Management: ${azure_cost:.2f}")
+print(f"Databricks Usage (system.billing): DBUs {dbu_total}, DBU charge ${dbu_charge:.2f}")
