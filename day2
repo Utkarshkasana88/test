@@ -1,0 +1,59 @@
+import requests
+import json
+from datetime import datetime, timedelta
+
+# --- CONFIGURATION ---
+subscription_id = "<your-subscription-id>"
+resource_id = "<full-resource-id>"  # Example: /subscriptions/.../resourceGroups/.../providers/Microsoft.Databricks/workspaces/...
+access_token = "<your-azure-bearer-token>"  # From az cli
+
+# Time range for cost (last 7 days)
+end_date = datetime.utcnow().date()
+start_date = end_date - timedelta(days=7)
+
+# Endpoint for cost query
+url = f"https://management.azure.com/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query?api-version=2023-03-01"
+
+# Request payload
+payload = {
+    "type": "Usage",
+    "timeframe": "Custom",
+    "timePeriod": {
+        "from": start_date.isoformat(),
+        "to": end_date.isoformat()
+    },
+    "dataset": {
+        "granularity": "Daily",
+        "filter": {
+            "dimensions": {
+                "name": "ResourceId",
+                "operator": "In",
+                "values": [resource_id]
+            }
+        },
+        "aggregation": {
+            "totalCost": {
+                "name": "PreTaxCost",
+                "function": "Sum"
+            }
+        }
+    }
+}
+
+# Headers
+headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Content-Type": "application/json"
+}
+
+# Make the API request
+response = requests.post(url, headers=headers, json=payload)
+
+# Check response
+if response.status_code == 200:
+    data = response.json()
+    print("Resource Cost Data:\n")
+    for row in data.get("properties", {}).get("rows", []):
+        print(row)
+else:
+    print(f"Error {response.status_code}: {response.text}")
