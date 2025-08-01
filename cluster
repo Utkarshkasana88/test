@@ -1,0 +1,108 @@
+import requests
+from datetime import datetime, timedelta
+import collections
+
+# CONFIG
+DATABRICKS_HOST = "<https://<your-workspace>.azuredatabricks.net>"
+DATABRICKS_TOKEN = "<your-databricks-pat>"
+AZURE_TOKEN = "<your-azure-bearer-token>"
+SUBSCRIPTION_ID = "<your-subscription-id>"
+DATABRICKS_RESOURCE_ID = "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Databricks/workspaces/<workspace-name>"
+
+# Time window (last 1 day)
+end_date = datetime.utcnow().date()
+start_date = end_date - timedelta(days=1)
+
+# --- Step 1: Get job runs from Databricks ---
+def get_all_runs():
+    headers = {"Authorization": f"Bearer {DATABRICKS_TOKEN}"}
+    url = f"{DATABRICKS_HOST}/api/2.1/jobs/runs/list"
+    params = {
+        "completed_only": "true",
+        "limit": 1000
+    }
+    runs = []
+    while url:
+        resp = requests.get(url, headers=headers, params=params).json()
+        runs.extend(resp.get("runs", []))
+        url = resp.get("next_page", {}).get("url")
+        params = None  # pagination token is embedded in `url`
+    return runs
+
+# --- Step 2: Group jobs by cluster_id and calculate total runtime per cluster ---
+def group_by_cluster(runs):
+    cluster_usage = collections.defaultdict(list)
+    for run in runs:
+        cluster_id = run.get("cluster_instance", {}).get("cluster_id")
+        start = run.get("start_time")
+        end = run.get("end_time")
+        if cluster_id and start and end:
+            duration_sec = (end - start) / 1000
+            cluster_usage[cluster_id].append({
+                "run_id": run["run_id"],
+                "duration_sec": duration_sec
+            })
+    return cluster_usage
+
+# --- Step 3: Get total workspace cost for the time range ---
+def get_workspace_cost():
+    headers = {
+        "Authorization": f"Bearer {AZURE_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    url = f"https://management.azure.com/subscriptions/{SUBSCRIPTION_ID}/providers/Microsoft.CostManagement/query?api-version=2023-03-01"
+    payload = {
+        "type": "Usage",
+        "timeframe": "Custom",
+        "timePeriod": {
+            "from": start_date.isoformat(),
+            "to": end_date.isoformat()
+        },
+        "dataset": {
+            "granularity": "None",
+            "filter": {
+                "dimensions": {
+                    "name": "ResourceId",
+                    "operator": "In",
+                    "values": [DATABRICKS_RESOURCE_ID]
+                }
+            },
+            "aggregation": {
+                "totalCost": {
+                    "name": "PreTaxCost",
+                    "function": "Sum"
+                }
+            }
+        }
+    }
+    resp = requests.post(url, headers=headers, json=payload)
+    rows = resp.json().get("properties", {}).get("rows", [])
+    return rows[0][0] if rows else 0.0
+
+# --- Step 4: Calculate cost per cluster and per job ---
+def estimate_cost(cluster_usage, total_workspace_cost):
+    result = {}
+    for cluster_id, jobs in cluster_usage.items():
+        cluster_total_runtime = sum(j["duration_sec"] for j in jobs)
+        result[cluster_id] = []
+        for job in jobs:
+            share = job["duration_sec"] / cluster_total_runtime if cluster_total_runtime else 0
+            cost = total_workspace_cost * share
+            result[cluster_id].append({
+                "run_id": job["run_id"],
+                "duration_sec": job["duration_sec"],
+                "cost_estimate": round(cost, 4)
+            })
+    return result
+
+# --- Run the pipeline ---
+all_runs = get_all_runs()
+cluster_usage = group_by_cluster(all_runs)
+workspace_cost = get_workspace_cost()
+estimated_costs = estimate_cost(cluster_usage, workspace_cost)
+
+# --- Print Results ---
+for cluster_id, jobs in estimated_costs.items():
+    print(f"\nCluster ID: {cluster_id}")
+    for job in jobs:
+        print(f"  Run ID: {job['run_id']}, Duration: {job['duration_sec']}s, Cost: ${job['cost_estimate']}")
