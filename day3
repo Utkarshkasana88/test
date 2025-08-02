@@ -1,0 +1,21 @@
+from datetime import datetime
+import pytz
+
+def ist_to_utc(ist_str):
+    """
+    Convert IST datetime string (YYYY-MM-DDTHH:MM:SS) to UTC ISO 8601 format.
+    """
+    # Define IST timezone
+    ist = pytz.timezone('Asia/Kolkata')
+
+    # Parse the IST time string to naive datetime
+    dt_ist = datetime.strptime(ist_str, "%Y-%m-%dT%H:%M:%S")
+
+    # Localize to IST
+    dt_ist = ist.localize(dt_ist)
+
+    # Convert to UTC
+    dt_utc = dt_ist.astimezone(pytz.utc)
+
+    # Return UTC time in ISO format
+    return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
