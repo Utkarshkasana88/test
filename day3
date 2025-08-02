@@ -19,3 +19,12 @@ def ist_to_utc(ist_str):
 
     # Return UTC time in ISO format
     return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+from datetime import datetime
+
+def to_utc_iso(datetime_str):
+    """
+    Convert 'YYYY-MM-DD HH:MM:SS' to ISO 8601 UTC format (with Z suffix)
+    """
+    dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
