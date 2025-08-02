@@ -1,30 +1,11 @@
 from datetime import datetime
-import pytz
 
-def ist_to_utc(ist_str):
+def to_utc_iso_with_microseconds(datetime_str):
     """
-    Convert IST datetime string (YYYY-MM-DDTHH:MM:SS) to UTC ISO 8601 format.
+    Convert 'YYYY-MM-DD HH:MM:SS.microseconds' to ISO 8601 UTC format with Z suffix.
     """
-    # Define IST timezone
-    ist = pytz.timezone('Asia/Kolkata')
+    dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S.%f")
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-    # Parse the IST time string to naive datetime
-    dt_ist = datetime.strptime(ist_str, "%Y-%m-%dT%H:%M:%S")
-
-    # Localize to IST
-    dt_ist = ist.localize(dt_ist)
-
-    # Convert to UTC
-    dt_utc = dt_ist.astimezone(pytz.utc)
-
-    # Return UTC time in ISO format
-    return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-from datetime import datetime
-
-def to_utc_iso(datetime_str):
-    """
-    Convert 'YYYY-MM-DD HH:MM:SS' to ISO 8601 UTC format (with Z suffix)
-    """
-    dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+# Example usage
+print(to_utc_iso_with_microseconds("2025-08-08 07:21:00.909000"))
