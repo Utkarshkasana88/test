@@ -100,4 +100,16 @@
   }
 }
 
+"filter": {
+  "dimensions": {
+    "name": "ServiceName",
+    "operator": "In",
+    "values": [
+      "Azure Databricks",
+      "Other"
+    ]
+  }
+}
+
+
 
