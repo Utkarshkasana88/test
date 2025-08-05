@@ -134,6 +134,46 @@ with open("dbu_usage.csv", "wb") as f:
 
 print("Downloaded DBU usage to dbu_usage.csv")
 
+import requests
+from datetime import datetime
+
+workspace_url = "https://<workspace>.azuredatabricks.net"
+token = "<your_workspace_pat>"
+cluster_id = "<your_cluster_id>"
+
+def ms_to_datetime(ms):
+    return datetime.utcfromtimestamp(ms / 1000)
+
+headers = {"Authorization": f"Bearer {token}"}
+response = requests.get(
+    f"{workspace_url}/api/2.0/clusters/get",
+    headers=headers,
+    params={"cluster_id": cluster_id}
+)
+
+cluster = response.json()
+
+start_time = ms_to_datetime(cluster["start_time"])
+end_time = ms_to_datetime(cluster["terminated_time"])
+duration_hours = (end_time - start_time).total_seconds() / 3600
+
+# Get node type and DBU rate (you can maintain a lookup dict)
+node_type = cluster["node_type_id"]
+dbu_rate_per_node = {
+    "Standard_DS3_v2": 3.0,  # example, update based on pricing
+    "Standard_D8s_v3": 6.0
+}
+rate = dbu_rate_per_node.get(node_type, 3.0)
+
+# Estimate DBUs
+num_workers = cluster.get("num_workers", 0)
+total_nodes = num_workers + 1  # include driver
+estimated_dbus = total_nodes * duration_hours * rate
+
+print(f"Cluster ran for {duration_hours:.2f} hours")
+print(f"Estimated DBUs: {estimated_dbus:.2f}")
+
+
 
 
 
