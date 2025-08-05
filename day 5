@@ -1,0 +1,34 @@
+{
+  "type": "Usage",
+  "timeframe": "Custom",
+  "timePeriod": {
+    "from": "2025-08-01T00:00:00Z",
+    "to": "2025-08-05T23:59:59Z"
+  },
+  "dataset": {
+    "granularity": "Daily",
+    "filter": {
+      "dimensions": {
+        "name": "ResourceGroupName",
+        "operator": "In",
+        "values": ["your-resource-group-name"]
+      }
+    },
+    "aggregation": {
+      "totalCost": {
+        "name": "PreTaxCost",
+        "function": "Sum"
+      }
+    },
+    "grouping": [
+      {
+        "type": "Dimension",
+        "name": "MeterName"
+      },
+      {
+        "type": "Dimension",
+        "name": "ResourceId"
+      }
+    ]
+  }
+}
