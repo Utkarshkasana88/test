@@ -32,3 +32,51 @@
     ]
   }
 }
+
+
+{
+  "type": "Usage",
+  "timeframe": "MonthToDate",
+  "dataset": {
+    "granularity": "Daily",
+    "filter": {
+      "and": [
+        {
+          "tags": {
+            "name": "JOB_NO",
+            "operator": "In",
+            "values": [
+              "1234"
+            ]
+          }
+        },
+        {
+          "dimensions": {
+            "name": "ResourceId",
+            "operator": "In",
+            "values": [
+              "/subscriptions/cc62aeac4-1257-4515-8a36-9a22b65999f5/resourcegroups/arg-ct-neu-bigdataworkspace/providers/microsoft.databricks/workspaces/adw-ct-neu-bigdataworkspace"
+            ]
+          }
+        }
+      ]
+    },
+    "aggregation": {
+      "totalCost": {
+        "name": "PreTaxCost",
+        "function": "Sum"
+      }
+    },
+    "grouping": [
+      {
+        "type": "Dimension",
+        "name": "ResourceId"
+      }
+    ]
+  },
+  "timePeriod": {
+    "from": "2025-07-31T00:00:00Z",
+    "to": "2025-07-31T00:00:00Z"
+  }
+}
+
