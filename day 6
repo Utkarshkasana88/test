@@ -1,0 +1,37 @@
+import requests
+
+def get_azure_prices(service_name: str, region: str, currency: str = "USD", max_pages: int = 3):
+    url = "https://prices.azure.com/api/retail/prices"
+    filter_query = f"?$filter=serviceName eq '{service_name}' and armRegionName eq '{region}' and currencyCode eq '{currency}'"
+    
+    results = []
+    current_url = url + filter_query
+    pages = 0
+
+    while current_url and pages < max_pages:
+        resp = requests.get(current_url)
+        data = resp.json()
+
+        for item in data.get("Items", []):
+            results.append({
+                "productName": item.get("productName"),
+                "skuName": item.get("skuName"),
+                "meterName": item.get("meterName"),
+                "unitPrice": item.get("unitPrice"),
+                "unitOfMeasure": item.get("unitOfMeasure"),
+                "armSkuName": item.get("armSkuName"),
+            })
+
+        current_url = data.get("NextPageLink")
+        pages += 1
+
+    return results
+
+
+      # Example: Get prices for Databricks in North Europe
+prices = get_azure_prices("Azure Databricks", "northeurope")
+
+for p in prices:
+    print(f"{p['skuName']} | {p['unitPrice']} {p['unitOfMeasure']}")
+
+      https://prices.azure.com/api/retail/prices?$filter=serviceName eq 'Azure Databricks'
