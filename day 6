@@ -35,3 +35,7 @@ for p in prices:
     print(f"{p['skuName']} | {p['unitPrice']} {p['unitOfMeasure']}")
 
       https://prices.azure.com/api/retail/prices?$filter=serviceName eq 'Azure Databricks'
+
+
+df["col"] = df["col"].apply(lambda x: x.split(",") if isinstance(x, str) else x)
+
